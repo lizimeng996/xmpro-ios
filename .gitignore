@@ -1,0 +1,26 @@
+# Xcode and Swift build products
+DerivedData/
+.build/
+build/
+
+# Per-user Xcode state
+*.xcuserdata/
+xcuserdata/
+*.xcuserstate
+xcshareddata/swiftpm/
+
+# macOS metadata
+.DS_Store
+
+# Local protocol verification environment
+tools/.venv/
+__pycache__/
+*.pyc
+
+# Distribution artifacts
+*.ipa
+*.dSYM.zip
+*.dSYM/
+*.xcarchive/
+
+.codex-review/

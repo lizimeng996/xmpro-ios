@@ -1,0 +1,97 @@
+name: XMPro
+options:
+  bundleIdPrefix: studio.teikeng
+  deploymentTarget:
+    iOS: "16.0"
+configs:
+  Debug: debug
+  Release: release
+settings:
+  base:
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    ALWAYS_SEARCH_USER_PATHS: NO
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    SDKROOT: iphoneos
+    TARGETED_DEVICE_FAMILY: "1,2"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+  configs:
+    Debug:
+      SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+      ENABLE_TESTABILITY: YES
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG"
+      DEBUG_INFORMATION_FORMAT: dwarf
+    Release:
+      SWIFT_OPTIMIZATION_LEVEL: "-O"
+      ENABLE_TESTABILITY: NO
+      DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+targets:
+  XMPro:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: XMPro
+        excludes:
+          - Info.plist
+    settings:
+      base:
+        PRODUCT_NAME: XMPro
+        PRODUCT_BUNDLE_IDENTIFIER: studio.teikeng.xmpro
+        INFOPLIST_FILE: XMPro/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+          ENABLE_TESTABILITY: YES
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+          ENABLE_TESTABILITY: NO
+  XMProTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: XMProTests
+      - path: tools/golden_vectors.json
+        type: file
+        buildPhase: resources
+    dependencies:
+      - target: XMPro
+    settings:
+      base:
+        PRODUCT_NAME: XMProTests
+        PRODUCT_BUNDLE_IDENTIFIER: studio.teikeng.xmpro.tests
+        GENERATE_INFOPLIST_FILE: YES
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/XMPro.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/XMPro"
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @loader_path/Frameworks"
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+          ENABLE_TESTABILITY: YES
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+          ENABLE_TESTABILITY: NO
+schemes:
+  XMPro:
+    build:
+      targets:
+        XMPro: all
+        XMProTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - XMProTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

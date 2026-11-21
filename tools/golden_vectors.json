@@ -1,0 +1,76 @@
+{
+  "envelope_play": {
+    "json": "{\"trackId\":123456,\"bitRate\":64000,\"duration\":301}",
+    "envelope": "hxejnq91Wvgj1Zw0xBPJNa6eWj2gsCfpJtscrHkLiSzV5KOTkjucgij9Cu-pK28WXnLLCAYo2sw0\nzkB6gSgmQg\n"
+  },
+  "envelope_duration": {
+    "json": "{\"title\":\"第一集\",\"ok\":true}",
+    "envelope": "XcJufEuPXL25i6e1pTvkHh3Ui7P04ch_mVWYQMqsCtQ\n"
+  },
+  "activity_signature_samples": [
+    {
+      "params": {
+        "deviceId": "android-0123456789abcdef",
+        "timestamp": "1700000000000",
+        "uid": "123456"
+      },
+      "signature": "fa951e7936e4bbaf49f4f246e9adb177"
+    },
+    {
+      "params": {
+        "deviceId": "android-0123456789abcdef",
+        "timestamp": "1700000000000",
+        "uid": "123456",
+        "duration": "1800"
+      },
+      "signature": "ed9cac8ccbe96f0287f4b69c9d8dfad8"
+    }
+  ],
+  "history_signature_sample": {
+    "params": {
+      "mergeRecords": "[{\"endedAt\":\"1700000060000\",\"startedAt\":\"1700000000000\",\"type\":\"1\",\"itemId\":\"44131624\",\"childId\":\"77112233\",\"breakSecond\":\"120\",\"direction\":0}]",
+      "uid": "123456",
+      "token": "abcdef0123456789",
+      "device": "android",
+      "deviceId": "android-0123456789abcdef",
+      "version": "3.4.10",
+      "channel": "and-f5",
+      "impl": "com.ximalaya.ting.lite"
+    },
+    "signature": "5fcb3d83f159b3519aa188d6b6e44778"
+  },
+  "login_signature_sample": {
+    "values": {
+      "mobile": "ENCRYPTED_PLACEHOLDER",
+      "sendType": "1",
+      "biz": "1",
+      "nonce": "nonce-sample-1700000000",
+      "fdsOtp": "{\"captcha_id\":\"x\"}"
+    },
+    "signature": "7038278de8146afa7773c80625606cc3b2f85403"
+  },
+  "reward_signature_samples": [
+    {
+      "requestId": "11111111-2222-3333-4444-555555555555",
+      "uid": "123456",
+      "timestamp": 1700000000000,
+      "secondPhase": null,
+      "signature": "3f3dff12a5d2002b9f74246a1cf421c2"
+    },
+    {
+      "requestId": "11111111-2222-3333-4444-555555555555",
+      "uid": "123456",
+      "timestamp": 1700000000000,
+      "secondPhase": "true",
+      "signature": "eeacfc42b8652b447ff74e3b481f0ed2"
+    }
+  ],
+  "ticket_fixed": {
+    "uid": "123456",
+    "deviceId": "android-0123456789abcdef",
+    "attributes": null,
+    "nowSeconds": 1700000000,
+    "uuidHex": "00112233445566778899aabbccddeeff",
+    "ticket": "TACZVPxACI54VQjOt68_NLFp78AKQUiKMNnZ2-Yy3RLbxxz3cf6vibaH3qA1enXWtJEZdTk2PHiqLVJMRifWcW3fZI96kdjb20ueGltYWxheWEudGluZy5saXRlITEuMy4yNCEzLjQuMTAuMyFiPWxpdGUmcz1saXRlX3RyYWNrX3BsYXlfdXJsJiZ1PTEyMzQ1Ng"
+  }
+}
