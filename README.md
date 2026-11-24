@@ -52,14 +52,21 @@
 
 ## 构建与安装
 
-本项目**不提供预编译安装包，也不以上架 App Store 为目标**，需由使用者在自己的 Mac 上使用 Xcode 自行编译并签名安装到个人设备。
+本项目**不以上架 App Store 为目标**，在 [Releases](https://github.com/lizimeng996/xmpro-ios/releases) 提供**无签名 IPA** 供个人自有设备自签侧载使用，也支持在 Mac 上使用 Xcode 从源码自行编译。
 
 ### 环境要求
-- macOS 与 **Xcode 15+**（推荐 Xcode 26 / 27 以体验完整原生 Liquid Glass 特性）
-- Swift 5.9+ 编译器（Swift 5 语言模式）
-- iOS **16.0+** 真机或模拟器（iOS 26.1+ 自动启用原生 Liquid Glass 底栏与悬浮迷你播放条，低版本自动平滑回退为毛玻璃视觉）
+- **直接使用无签名 IPA**：iOS **17.0+** 真机（由 Xcode 27.2 编译构建），配合自签侧载工具（无需 Mac）；
+- **从源码自行编译**：macOS 与 **Xcode 15+**（推荐 Xcode 26 / 27 以体验完整原生 Liquid Glass 特性）、Swift 5.9+ 编译器，支持 iOS **16.0+** 真机或模拟器（iOS 26.1+ 自动启用原生 Liquid Glass 底栏与悬浮迷你播放条，低版本自动平滑回退为毛玻璃视觉）。
 
 ### 快速开始
+
+#### 方式一：下载无签名 IPA 自签安装（无需 Mac）
+1. 前往 [Releases](https://github.com/lizimeng996/xmpro-ios/releases) 下载最新的 `XMPro-*-unsigned.ipa`（已去除全部个人签名与本机路径信息）。
+2. 使用 **Sideloadly / AltStore / SideStore / 爱思助手 / 轻松签 / TrollStore** 等工具，选择你自己的 Apple ID 或证书签名安装到自有设备：
+   - 若工具提示默认 Bundle ID（`studio.teikeng.xmpro`）已被占用，在签名工具中改为你自己的唯一标识即可；
+   - 使用免费个人 Apple ID 自签的有效期通常为 7 天，到期前覆盖重签即可保留本地数据与登录状态。
+
+#### 方式二：从源码自行编译（macOS + Xcode）
 1. 克隆仓库并打开工程：
    ```bash
    git clone https://github.com/lizimeng996/xmpro-ios.git
