@@ -58,6 +58,37 @@ xcodebuild \
   build
 ```
 
+### 打包无签名 Release IPA（供自签安装）
+
+如需直接产出不含个人签名信息、可供 Sideloadly / AltStore / SideStore / TrollStore 等工具自签安装的真机 IPA：
+
+```bash
+rm -rf build/ipa-out && mkdir -p build/ipa-out/Payload
+
+xcodebuild \
+  -project XMPro.xcodeproj \
+  -scheme XMPro \
+  -configuration Release \
+  -sdk iphoneos \
+  -destination 'generic/platform=iOS' \
+  -derivedDataPath build/ipa-out/DerivedData \
+  CODE_SIGN_IDENTITY="" \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
+  DEVELOPMENT_TEAM="" \
+  AD_HOC_CODE_SIGNING_ALLOWED=NO \
+  DEPLOYMENT_POSTPROCESSING=YES \
+  STRIP_INSTALLED_PRODUCT=YES \
+  OTHER_SWIFT_FLAGS='$(inherited) -file-prefix-map '"$PWD"'=. -debug-prefix-map '"$PWD"'=.' \
+  build
+
+cp -R build/ipa-out/DerivedData/Build/Products/Release-iphoneos/XMPro.app build/ipa-out/Payload/XMPro.app
+rm -rf build/ipa-out/Payload/XMPro.app/_CodeSignature build/ipa-out/Payload/XMPro.app/embedded.mobileprovision
+(cd build/ipa-out && zip -qry ../XMPro-0.1.0-unsigned.ipa Payload -x '*.DS_Store')
+```
+
+生成的无签名包位于 `build/XMPro-0.1.0-unsigned.ipa`（默认已被 `.gitignore` 忽略，不会污染仓库）。
+
 ---
 
 ## 4. 使用 XcodeGen 重新生成工程
