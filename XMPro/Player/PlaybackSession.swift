@@ -572,9 +572,24 @@ final class PlaybackSession: ObservableObject {
             "skipTrim", "skipMode", "introPermille", "outroPermille"
         ])
         persist()
-        if settings.skipTrim && settings.skipMode == "smart" {
-            message = "智能静音跳过将在 S5 提供；当前可使用手动跳过头尾"
-        }
+    }
+
+    func migrateLegacySmartSkipIfNeeded() {
+        guard settings.skipTrim, settings.skipMode != "manual" else { return }
+        setSkipTrim(
+            enabled: true,
+            intro: settings.introPermille,
+            outro: settings.outroPermille,
+            mode: "manual"
+        )
+    }
+
+    func skipTrimPercentLabel(permille: Int) -> String {
+        let clamped = max(0, permille)
+        let percentText = String(format: "%.1f%%", Double(clamped) / 10.0)
+        guard durationMs > 0 else { return percentText }
+        let seconds = Int((Double(durationMs) * Double(clamped) / 1_000_000.0).rounded())
+        return "\(percentText) · 约 \(seconds) 秒"
     }
 
     func introSeekMs(trackSeconds: Double, currentDurationMs: Int64? = nil) -> Int64 {

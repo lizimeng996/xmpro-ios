@@ -73,6 +73,7 @@ private struct PlaybackContentView: View {
     @State private var speedSheetOpen = false
     @State private var timerSheetOpen = false
     @State private var qualitySheetOpen = false
+    @State private var skipTrimSheetOpen = false
     @State private var bookmarkSaving = false
     @State private var favoriteSaving = false
     @State private var showCaptions = false
@@ -177,6 +178,7 @@ private struct PlaybackContentView: View {
         }
         .task {
             await session.prepare()
+            session.migrateLegacySmartSkipIfNeeded()
             await dependencies.syncBookmarks()
         }
         .task(id: session.track?.id ?? "") {
@@ -209,6 +211,11 @@ private struct PlaybackContentView: View {
         }
         .sheet(isPresented: $qualitySheetOpen) {
             qualityQuickSheet
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $skipTrimSheetOpen) {
+            skipTrimQuickSheet
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
@@ -725,13 +732,22 @@ private struct PlaybackContentView: View {
                     label: "跳头尾",
                     highlighted: session.settings.skipTrim
                 ) {
-                    session.setSkipTrim(
-                        enabled: !session.settings.skipTrim,
-                        intro: session.settings.introPermille,
-                        outro: session.settings.outroPermille,
-                        mode: session.settings.skipMode
-                    )
-                    notice = session.settings.skipTrim ? "已开启跳过头尾" : "已关闭跳过头尾"
+                    toggleSkipTrim()
+                }
+                .contextMenu {
+                    Button {
+                        toggleSkipTrim()
+                    } label: {
+                        Label(
+                            session.settings.skipTrim ? "关闭跳过头尾" : "开启跳过头尾",
+                            systemImage: "forward.end.alt"
+                        )
+                    }
+                    Button {
+                        skipTrimSheetOpen = true
+                    } label: {
+                        Label("设置头尾比例…", systemImage: "slider.horizontal.3")
+                    }
                 }
 
                 Spacer(minLength: 0)
@@ -1071,7 +1087,117 @@ private struct PlaybackContentView: View {
         }
     }
 
+    // MARK: 跳过头尾 Sheet
+
+    private var skipTrimQuickSheet: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 20) {
+                Toggle(isOn: Binding(
+                    get: { session.settings.skipTrim },
+                    set: { enabled in
+                        session.setSkipTrim(
+                            enabled: enabled,
+                            intro: session.settings.introPermille,
+                            outro: session.settings.outroPermille,
+                            mode: "manual"
+                        )
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("跳过头尾")
+                            .font(.body.weight(.medium))
+                        Text("按设定比例自动跳过单集片头与片尾")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .tint(palette.accent)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("跳过开头")
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        Text(session.skipTrimPercentLabel(permille: session.settings.introPermille))
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(
+                        value: Binding(
+                            get: { Double(session.settings.introPermille) },
+                            set: {
+                                session.setSkipTrim(
+                                    enabled: true,
+                                    intro: Int($0.rounded()),
+                                    outro: session.settings.outroPermille,
+                                    mode: "manual"
+                                )
+                            }
+                        ),
+                        in: 0...200,
+                        step: 5
+                    )
+                    .tint(palette.accent)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("跳过结尾")
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        Text(session.skipTrimPercentLabel(permille: session.settings.outroPermille))
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(
+                        value: Binding(
+                            get: { Double(session.settings.outroPermille) },
+                            set: {
+                                session.setSkipTrim(
+                                    enabled: true,
+                                    intro: session.settings.introPermille,
+                                    outro: Int($0.rounded()),
+                                    mode: "manual"
+                                )
+                            }
+                        ),
+                        in: 0...200,
+                        step: 5
+                    )
+                    .tint(palette.accent)
+                }
+
+                Spacer()
+            }
+            .padding(XMMetrics.pagePadding)
+            .navigationTitle("跳过头尾")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { skipTrimSheetOpen = false }
+                }
+            }
+        }
+    }
+
     // MARK: 数据与动作
+
+    private func toggleSkipTrim() {
+        let nextEnabled = !session.settings.skipTrim
+        session.setSkipTrim(
+            enabled: nextEnabled,
+            intro: session.settings.introPermille,
+            outro: session.settings.outroPermille,
+            mode: "manual"
+        )
+        if nextEnabled {
+            let introText = String(format: "%.1f%%", Double(session.settings.introPermille) / 10.0)
+            let outroText = String(format: "%.1f%%", Double(session.settings.outroPermille) / 10.0)
+            notice = "已开启跳过头尾（开头 \(introText) / 结尾 \(outroText)）"
+        } else {
+            notice = "已关闭跳过头尾"
+        }
+    }
 
     private func loadTrackDetails(for track: Track?) async {
         guard let track else {

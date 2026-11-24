@@ -763,90 +763,75 @@ private struct PlaybackPreferencesView: View {
                             enabled: enabled,
                             intro: session.settings.introPermille,
                             outro: session.settings.outroPermille,
-                            mode: session.settings.skipMode
+                            mode: "manual"
                         )
                     }
                 )) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("跳过头尾")
-                        Text("自动跳过开头的空白与结尾的静音")
+                        Text("按设定比例自动跳过单集片头与片尾")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
 
                 if session.settings.skipTrim {
-                    Picker("跳过模式", selection: Binding(
-                        get: { session.settings.skipMode },
-                        set: { mode in
-                            session.setSkipTrim(
-                                enabled: true,
-                                intro: session.settings.introPermille,
-                                outro: session.settings.outroPermille,
-                                mode: mode
-                            )
+                    VStack(alignment: .leading, spacing: 6) {
+                        LabeledContent("跳过开头") {
+                            Text(session.skipTrimPercentLabel(permille: session.settings.introPermille))
+                                .monospacedDigit()
                         }
-                    )) {
-                        Text("智能静音").tag("smart")
-                        Text("按比例裁剪").tag("manual")
+                        Slider(
+                            value: Binding(
+                                get: { Double(session.settings.introPermille) },
+                                set: {
+                                    session.setSkipTrim(
+                                        enabled: true,
+                                        intro: Int($0.rounded()),
+                                        outro: session.settings.outroPermille,
+                                        mode: "manual"
+                                    )
+                                }
+                            ),
+                            in: 0...200,
+                            step: 5
+                        )
+                        .tint(palette.accent)
                     }
-                    .pickerStyle(.segmented)
 
-                    if session.settings.skipMode == "manual" {
-                        VStack(alignment: .leading, spacing: 6) {
-                            LabeledContent("跳过开头") {
-                                Text(String(format: "%.1f%%", Double(session.settings.introPermille) / 10.0))
-                                    .monospacedDigit()
-                            }
-                            Slider(
-                                value: Binding(
-                                    get: { Double(session.settings.introPermille) },
-                                    set: {
-                                        session.setSkipTrim(
-                                            enabled: true,
-                                            intro: Int($0.rounded()),
-                                            outro: session.settings.outroPermille,
-                                            mode: "manual"
-                                        )
-                                    }
-                                ),
-                                in: 0...200,
-                                step: 5
-                            )
-                            .tint(palette.accent)
+                    VStack(alignment: .leading, spacing: 6) {
+                        LabeledContent("跳过结尾") {
+                            Text(session.skipTrimPercentLabel(permille: session.settings.outroPermille))
+                                .monospacedDigit()
                         }
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            LabeledContent("跳过结尾") {
-                                Text(String(format: "%.1f%%", Double(session.settings.outroPermille) / 10.0))
-                                    .monospacedDigit()
-                            }
-                            Slider(
-                                value: Binding(
-                                    get: { Double(session.settings.outroPermille) },
-                                    set: {
-                                        session.setSkipTrim(
-                                            enabled: true,
-                                            intro: session.settings.introPermille,
-                                            outro: Int($0.rounded()),
-                                            mode: "manual"
-                                        )
-                                    }
-                                ),
-                                in: 0...200,
-                                step: 5
-                            )
-                            .tint(palette.accent)
-                        }
+                        Slider(
+                            value: Binding(
+                                get: { Double(session.settings.outroPermille) },
+                                set: {
+                                    session.setSkipTrim(
+                                        enabled: true,
+                                        intro: session.settings.introPermille,
+                                        outro: Int($0.rounded()),
+                                        mode: "manual"
+                                    )
+                                }
+                            ),
+                            in: 0...200,
+                            step: 5
+                        )
+                        .tint(palette.accent)
                     }
                 }
             } header: {
-                Text("智能跳过")
+                Text("跳过头尾")
             }
         }
         .xmPageBackground()
         .navigationTitle("播放设置")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            session.migrateLegacySmartSkipIfNeeded()
+        }
     }
 }
 

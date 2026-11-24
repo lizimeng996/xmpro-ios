@@ -1404,4 +1404,35 @@ final class PlaybackSessionTests: XCTestCase {
         XCTAssertTrue(savedState.pendingSync.isEmpty)
         XCTAssertTrue(FileManager.default.fileExists(atPath: destination.path))
     }
+
+    func testSetSkipTrimDoesNotEmitLegacyS5Message() async throws {
+        let track = try track(1, duration: 600)
+        let engine = FakePlayerEngine()
+        let session = make(
+            engine: engine, store: FakePlaybackStore(),
+            clock: FakePlaybackClock(),
+            client: FakePlaybackClient(tracks: [track]),
+            history: FakePlaybackHistory()
+        )
+        await session.prepare()
+
+        session.setSkipTrim(enabled: true, mode: "smart")
+        XCTAssertNil(session.message)
+        XCTAssertEqual(session.settings.skipMode, "smart")
+
+        session.migrateLegacySmartSkipIfNeeded()
+        XCTAssertNil(session.message)
+        XCTAssertEqual(session.settings.skipMode, "manual")
+
+        session.setSkipTrim(enabled: true, intro: 50, outro: 50, mode: "manual")
+        XCTAssertNil(session.message)
+        XCTAssertEqual(session.introSeekMs(trackSeconds: 100), 5_000)
+        XCTAssertEqual(session.skipTrimPercentLabel(permille: 30), "3.0%")
+
+        await session.play(track: track)
+        engine.advance(to: 5_000)
+        session.tick()
+        XCTAssertEqual(session.skipTrimPercentLabel(permille: 30), "3.0% · 约 18 秒")
+        await session.flush()
+    }
 }
