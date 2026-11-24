@@ -862,8 +862,33 @@ final class PlaybackSession: ObservableObject {
             )
 
             try controls?.activate()
-            track = audio.track
-            sessionTrack = audio.track
+            let resolvedTrack = audio.track
+            let mergedArtist = resolvedTrack.artist.isEmpty ? catalogueTrack.artist : resolvedTrack.artist
+            let mergedAlbum = resolvedTrack.album.isEmpty ? catalogueTrack.album : resolvedTrack.album
+            let mergedCover = resolvedTrack.coverUrl ?? catalogueTrack.coverUrl
+            let finalTrack: Track
+            if mergedArtist != resolvedTrack.artist || mergedAlbum != resolvedTrack.album || mergedCover != resolvedTrack.coverUrl,
+               let merged = try? Track(
+                rawId: resolvedTrack.id,
+                title: resolvedTrack.title,
+                artist: mergedArtist,
+                album: mergedAlbum,
+                albumId: resolvedTrack.albumKey,
+                duration: resolvedTrack.duration,
+                orderNo: resolvedTrack.orderNo,
+                episode: resolvedTrack.episode,
+                isPaid: resolvedTrack.isPaid,
+                isAuthorized: resolvedTrack.isAuthorized,
+                coverUrl: mergedCover,
+                intro: resolvedTrack.intro,
+                raw: resolvedTrack.raw
+               ) {
+                finalTrack = merged
+            } else {
+                finalTrack = resolvedTrack
+            }
+            track = finalTrack
+            sessionTrack = finalTrack
             sessionClient = client
             sessionIdentity = client.identity == "anonymous" ? nil : client.identity
             currentRequiresReward = audio.requiresReward

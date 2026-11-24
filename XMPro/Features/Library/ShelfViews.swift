@@ -382,6 +382,7 @@ struct ShelfView: View {
                 hasMore = result.hasMore
             case .bookmarks:
                 bookmarks = await dependencies.bookmarkService?.list() ?? []
+                dependencies.recordBookmarks(bookmarks)
                 hasMore = false
             }
         } catch {
@@ -422,6 +423,7 @@ struct ShelfView: View {
         guard let service = dependencies.bookmarkService else { return }
         do {
             bookmarks = try await service.remove(trackId: trackId)
+            dependencies.recordBookmarks(bookmarks)
             notice = "已移除书签"
         } catch {
             notice = s4Error(error, fallback: "删除书签失败").message

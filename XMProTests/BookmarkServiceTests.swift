@@ -383,4 +383,46 @@ final class BookmarkServiceTests: XCTestCase {
         XCTAssertNil(result.first?.track.coverUrl)
         XCTAssertEqual(result.first?.positionMs, 123)
     }
+
+    @MainActor
+    func testAppDependenciesBookmarkSyncAndArtistDisplayName() async throws {
+        let h = try S4Harness(test: self)
+        let credentials = try await h.addAccount("101")
+        await h.accounts.renameAccount(identity: credentials.identity, nickname: "测试昵称")
+
+        let deps = AppDependencies(
+            stateRepository: h.repository,
+            credentialsVault: h.vault,
+            automaticallyRefreshAccounts: false
+        )
+        await deps.refreshAccountServices()
+
+        let ownTrack = try Track(
+            rawId: "xmly:1001",
+            title: "声音",
+            artist: "听友101",
+            album: "专辑",
+            albumId: "88"
+        )
+        XCTAssertEqual(deps.displayNameForArtist(ownTrack.artist, track: ownTrack), "测试昵称")
+
+        let otherTrack = try Track(
+            rawId: "xmly:1002",
+            title: "声音2",
+            artist: "其他主播",
+            album: "专辑",
+            albumId: "88"
+        )
+        XCTAssertEqual(deps.displayNameForArtist(otherTrack.artist, track: otherTrack), "其他主播")
+
+        let service = try XCTUnwrap(deps.bookmarkService)
+        let added = try await service.add(track: ownTrack, positionMs: 12_000)
+        deps.recordBookmarks(added)
+        XCTAssertTrue(deps.isTrackBookmarked(ownTrack.id))
+        XCTAssertTrue(deps.isTrackBookmarked("1001"))
+
+        let removed = try await service.remove(trackId: ownTrack.id)
+        deps.recordBookmarks(removed)
+        XCTAssertFalse(deps.isTrackBookmarked(ownTrack.id))
+    }
 }

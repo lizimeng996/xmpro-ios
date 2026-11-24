@@ -65,7 +65,9 @@ func mediaUri(_ value: String) throws -> String {
 func coverUrl(_ raw: [String: Any]) -> String? {
     let keys = [
         "coverLarge", "coverMiddle", "coverSmall", "cover_path",
-        "album_cover_path", "cover_url", "albumImage"
+        "album_cover_path", "cover_url", "albumImage",
+        "coverOrigin", "coverPath", "coverWebLarge", "coverWebMiddle",
+        "albumCoverPath", "coverUrl", "cover", "pic"
     ]
     for key in keys {
         guard let original = raw[key] as? String,

@@ -254,9 +254,28 @@ final class XMImagePipeline {
         if let running = inflight[url] { return await running.value }
         let session = self.session
         let task = Task<UIImage?, Never>.detached(priority: .userInitiated) {
-            guard let (data, _) = try? await session.data(from: url),
-                  let raw = UIImage(data: data) else { return nil }
-            return await raw.byPreparingForDisplay() ?? raw
+            func fetch(_ targetURL: URL) async -> UIImage? {
+                var request = URLRequest(url: targetURL)
+                request.setValue(
+                    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+                    forHTTPHeaderField: "User-Agent"
+                )
+                guard let (data, _) = try? await session.data(for: request),
+                      let raw = UIImage(data: data) else { return nil }
+                return await raw.byPreparingForDisplay() ?? raw
+            }
+
+            if let loaded = await fetch(url) {
+                return loaded
+            }
+            if url.scheme?.lowercased() == "http",
+               var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+                comps.scheme = "https"
+                if let httpsURL = comps.url, httpsURL != url {
+                    return await fetch(httpsURL)
+                }
+            }
+            return nil
         }
         inflight[url] = task
         let result = await task.value
@@ -365,7 +384,20 @@ struct XMArtworkBackdrop: View {
             .clipped()
         }
         .task(id: url) {
-            guard let url, let resolved = URL(string: url) else { return }
+            guard let url, let resolved = URL(string: url) else {
+                image = nil
+                tint = nil
+                return
+            }
+            if let hit = XMImagePipeline.shared.cached(resolved) {
+                image = hit
+                if let color = await XMImagePipeline.shared.dominantColor(for: resolved) {
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        tint = Color(uiColor: color)
+                    }
+                }
+                return
+            }
             async let img = XMImagePipeline.shared.image(for: resolved)
             async let color = XMImagePipeline.shared.dominantColor(for: resolved)
             let (loadedImage, loadedColor) = await (img, color)

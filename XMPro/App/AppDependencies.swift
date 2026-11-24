@@ -32,6 +32,8 @@ final class AppDependencies: ObservableObject {
     @Published var userPageError: XmlyError?
     @Published private(set) var subscribedAlbumIds: Set<String> = []
     @Published private(set) var favoritedTrackIds: Set<String> = []
+    @Published private(set) var bookmarkedTrackIds: Set<String> = []
+    @Published private(set) var activeAccountSummary: AccountSummary?
 
     // 由平台宿主接 fileExporter/fileImporter；本层只传递 Data。
     var onExportBackup: (@MainActor (Data) -> Void)?
@@ -229,6 +231,7 @@ final class AppDependencies: ObservableObject {
         userPageUID = nil
         subscribedAlbumIds = []
         favoritedTrackIds = []
+        bookmarkedTrackIds = []
         subscriptionsSynced = false
         do {
             let client = try await clientFactory()
@@ -238,7 +241,9 @@ final class AppDependencies: ObservableObject {
             } else {
                 activeContext = nil
             }
+            let summary = await accountStore?.activeAccount()
             guard generation == accountRefreshGeneration else { return }
+            activeAccountSummary = summary
             experienceService = XmlyExperienceService(client: client)
             welfareService = XmlyWelfareService(
                 http: http, accountContext: activeContext, clock: serverClock
@@ -248,6 +253,7 @@ final class AppDependencies: ObservableObject {
             )
         } catch {
             guard generation == accountRefreshGeneration else { return }
+            activeAccountSummary = await accountStore?.activeAccount()
             let anonymous = XmlyClientService(
                 http: http, accountContext: nil, clock: serverClock
             )
@@ -259,6 +265,7 @@ final class AppDependencies: ObservableObject {
                 client: anonymous, repository: stateRepository, clock: serverClock
             )
         }
+        await syncBookmarks()
         accountRevision &+= 1
     }
 
@@ -335,6 +342,56 @@ final class AppDependencies: ObservableObject {
             let key = normalizedTrackKey(track.id)
             if !key.isEmpty { favoritedTrackIds.insert(key) }
         }
+    }
+
+    func isTrackBookmarked(_ trackId: String) -> Bool {
+        bookmarkedTrackIds.contains(normalizedTrackKey(trackId))
+    }
+
+    func recordBookmarks(_ bookmarks: [Bookmark]) {
+        bookmarkedTrackIds = Set(
+            bookmarks.map { normalizedTrackKey($0.track.id) }.filter { !$0.isEmpty }
+        )
+    }
+
+    func syncBookmarks() async {
+        guard let bookmarkService else {
+            bookmarkedTrackIds = []
+            return
+        }
+        let list = await bookmarkService.list()
+        recordBookmarks(list)
+    }
+
+    func displayNameForArtist(_ artist: String, track: Track) -> String {
+        guard let active = activeAccountSummary,
+              !active.nickname.isEmpty,
+              active.nickname != "听友\(active.uid)",
+              active.nickname != "书友\(active.uid)" else {
+            return artist
+        }
+        let trimmed = artist.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed == "听友\(active.uid)" || trimmed == "书友\(active.uid)" || trimmed == active.uid {
+            return active.nickname
+        }
+        let raw = track.raw.compactMapValues { $0 }
+        let containers = [
+            raw,
+            raw["anchorInfo"] as? [String: Any] ?? [:],
+            raw["userInfo"] as? [String: Any] ?? [:]
+        ]
+        for container in containers {
+            for key in ["uid", "anchorUid", "anchorId", "userId"] {
+                guard let value = container[key] else { continue }
+                let text = B1JSON.text(value)
+                if let uid = try? xmlyIdentifier(text), uid == active.uid {
+                    if trimmed.isEmpty || trimmed.hasPrefix("听友") || trimmed.hasPrefix("书友") {
+                        return active.nickname
+                    }
+                }
+            }
+        }
+        return artist
     }
 
     func openUser(track: Track) {

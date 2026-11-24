@@ -137,72 +137,100 @@ struct AlbumDetailView: View {
         }
     }
 
+    private var effectiveCoverUrl: String? {
+        [
+            albumPage?.album.coverUrl,
+            initialAlbum?.coverUrl,
+            loadedTracks.first(where: { !($0.coverUrl ?? "").isEmpty })?.coverUrl
+        ]
+        .compactMap { $0 }
+        .first { !$0.isEmpty }
+    }
+
+    private var effectiveTitle: String {
+        if let t = albumPage?.album.title, !t.isEmpty { return t }
+        if let t = initialAlbum?.title, !t.isEmpty { return t }
+        return "专辑 \(albumId)"
+    }
+
+    private var effectiveArtist: String {
+        if let a = albumPage?.album.artist, !a.isEmpty { return a }
+        if let a = initialAlbum?.artist, !a.isEmpty { return a }
+        return "未知主播"
+    }
+
+    private var effectiveIntro: String {
+        if let i = albumPage?.album.intro, !i.isEmpty { return i }
+        if let i = initialAlbum?.intro, !i.isEmpty { return i }
+        return ""
+    }
+
     // MARK: 沉浸式头部
 
     @ViewBuilder
     private var heroHeader: some View {
-        if let album = albumPage?.album ?? initialAlbum {
+        if albumPage?.album ?? initialAlbum != nil {
             VStack(spacing: 0) {
-                ZStack {
-                    XMArtworkBackdrop(url: album.coverUrl, dimming: 0.35)
-                        .ignoresSafeArea(edges: .top)
+                VStack(spacing: 14) {
+                    XMArtwork(url: effectiveCoverUrl, cornerRadius: 18, symbol: "square.stack")
+                        .frame(width: 176, height: 176)
+                        .shadow(color: .black.opacity(0.38), radius: 22, y: 12)
 
-                    VStack(spacing: 14) {
-                        XMArtwork(url: album.coverUrl, cornerRadius: 18, symbol: "square.stack")
-                            .frame(width: 176, height: 176)
-                            .shadow(color: .black.opacity(0.38), radius: 22, y: 12)
+                    VStack(spacing: 5) {
+                        Text(effectiveTitle)
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(.white)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
 
-                        VStack(spacing: 5) {
-                            Text(album.title.isEmpty ? "专辑 \(albumId)" : album.title)
-                                .font(.title3.weight(.bold))
-                                .foregroundStyle(.white)
-                                .multilineTextAlignment(.center)
-                                .lineLimit(2)
-
-                            Text("\(album.artist.isEmpty ? "未知主播" : album.artist) · 共 \(totalCount) 集")
-                                .font(.subheadline)
-                                .foregroundStyle(.white.opacity(0.82))
-                        }
-
-                        HStack(spacing: 12) {
-                            Button {
-                                Task {
-                                    let targetIndex = loadedTracks.firstIndex(where: {
-                                        $0.id == dependencies.playbackSession.track?.id
-                                    }) ?? 0
-                                    await playTrack(at: targetIndex)
-                                }
-                            } label: {
-                                Label(
-                                    dependencies.playbackSession.track?.albumKey == albumId ? "继续播放" : "开始播放",
-                                    systemImage: "play.fill"
-                                )
-                                .font(.subheadline.weight(.semibold))
-                                .frame(minWidth: 118, minHeight: 34)
-                            }
-                            .xmProminentButton()
-                            .disabled(loadedTracks.isEmpty)
-
-                            Button {
-                                Task { await toggleSubscribe() }
-                            } label: {
-                                Label(subscribed ? "已订阅" : "订阅", systemImage: subscribed ? "checkmark" : "plus")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(minWidth: 96, minHeight: 34)
-                            }
-                            .xmGlassButton()
-                        }
-                        .padding(.top, 2)
+                        Text("\(effectiveArtist) · 共 \(totalCount) 集")
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.82))
                     }
-                    .padding(.horizontal, XMMetrics.pagePadding)
-                    .padding(.top, 20)
-                    .padding(.bottom, 24)
+
+                    HStack(spacing: 12) {
+                        Button {
+                            Task {
+                                let targetIndex = loadedTracks.firstIndex(where: {
+                                    $0.id == dependencies.playbackSession.track?.id
+                                }) ?? 0
+                                await playTrack(at: targetIndex)
+                            }
+                        } label: {
+                            Label(
+                                dependencies.playbackSession.track?.albumKey == albumId ? "继续播放" : "开始播放",
+                                systemImage: "play.fill"
+                            )
+                            .font(.subheadline.weight(.semibold))
+                            .frame(minWidth: 118, minHeight: 34)
+                        }
+                        .xmProminentButton()
+                        .disabled(loadedTracks.isEmpty)
+
+                        Button {
+                            Task { await toggleSubscribe() }
+                        } label: {
+                            Label(subscribed ? "已订阅" : "订阅", systemImage: subscribed ? "checkmark" : "plus")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(minWidth: 96, minHeight: 34)
+                        }
+                        .xmGlassButton()
+                    }
+                    .padding(.top, 2)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, XMMetrics.pagePadding)
+                .padding(.top, 20)
+                .padding(.bottom, 24)
+                .background {
+                    XMArtworkBackdrop(url: effectiveCoverUrl, dimming: 0.35)
+                        .ignoresSafeArea(edges: .top)
                 }
 
-                if !album.intro.isEmpty {
+                if !effectiveIntro.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(album.intro)
+                        Text(effectiveIntro)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(introExpanded ? nil : 3)

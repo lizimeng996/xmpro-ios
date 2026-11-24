@@ -265,11 +265,17 @@ final class XmlyClientService {
         try Task.checkCancellation()
         let rawAlbum = (header ?? data).merging(detail) { _, detail in detail }
         var parsed = try albumFromApi(rawAlbum, id: number, total: count)
-        if parsed.title.isEmpty,
-           let title = tracks.first(where: { !$0.album.isEmpty })?.album {
+        let fallbackTitle = parsed.title.isEmpty
+            ? (tracks.first(where: { !$0.album.isEmpty })?.album ?? "")
+            : parsed.title
+        let fallbackArtist = parsed.artist.isEmpty
+            ? (tracks.first(where: { !$0.artist.isEmpty })?.artist ?? "")
+            : parsed.artist
+        let fallbackCover = parsed.coverUrl ?? tracks.first(where: { $0.coverUrl != nil })?.coverUrl
+        if fallbackTitle != parsed.title || fallbackArtist != parsed.artist || fallbackCover != parsed.coverUrl {
             parsed = try Album(
-                rawId: parsed.id, title: title, artist: parsed.artist,
-                intro: parsed.intro, coverUrl: parsed.coverUrl,
+                rawId: parsed.id, title: fallbackTitle, artist: fallbackArtist,
+                intro: parsed.intro, coverUrl: fallbackCover,
                 total: parsed.total, raw: parsed.raw
             )
         }
@@ -665,10 +671,24 @@ final class XmlyClientService {
         } else {
             duration = 0
         }
+        let artistText: String = {
+            let candidates: [Any?] = [
+                raw["nickname"],
+                raw["anchorNickName"],
+                raw["anchorName"],
+                (raw["anchorInfo"] as? [String: Any])?["nickname"],
+                (raw["userInfo"] as? [String: Any])?["nickname"]
+            ]
+            for candidate in candidates {
+                let text = B1JSON.text(candidate).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty { return text }
+            }
+            return ""
+        }()
         let track = try Track(
             rawId: id,
             title: B1JSON.text(raw["title"]),
-            artist: B1JSON.text(raw["nickname"]),
+            artist: artistText,
             album: B1JSON.text(B1JSON.first(raw, ["albumTitle", "album_title"])),
             albumId: resolvedAlbum,
             duration: duration,

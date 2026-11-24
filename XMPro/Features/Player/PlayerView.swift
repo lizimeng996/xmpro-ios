@@ -98,6 +98,11 @@ private struct PlaybackContentView: View {
         return dependencies.isTrackFavorited(id)
     }
 
+    private var isBookmarked: Bool {
+        guard let id = session.track?.id else { return false }
+        return dependencies.isTrackBookmarked(id)
+    }
+
     private var sleepRemainingMs: Int64? {
         guard let target = session.sleepAtMillis else { return nil }
         let remaining = target - Int64(Date().timeIntervalSince1970 * 1_000)
@@ -170,12 +175,16 @@ private struct PlaybackContentView: View {
                 session.clearMessage()
             }
         }
-        .task { await session.prepare() }
+        .task {
+            await session.prepare()
+            await dependencies.syncBookmarks()
+        }
         .task(id: session.track?.id ?? "") {
             dragging = false
             dragTrackID = nil
             commentCount = nil
             notice = nil
+            await dependencies.syncBookmarks()
             await loadTrackDetails(for: session.track)
         }
         .sheet(isPresented: $commentsOpen, onDismiss: {
@@ -430,7 +439,8 @@ private struct PlaybackContentView: View {
                 Button {
                     onOpenUser(track)
                 } label: {
-                    let parts = [track.artist, track.album].filter { !$0.isEmpty }
+                    let artist = dependencies.displayNameForArtist(track.artist, track: track)
+                    let parts = [artist, track.album].filter { !$0.isEmpty }
                     HStack(spacing: 4) {
                         Text(parts.isEmpty ? "喜马拉雅声音" : parts.joined(separator: " · "))
                             .font(.subheadline)
@@ -465,17 +475,40 @@ private struct PlaybackContentView: View {
                     .accessibilityLabel(isFavorited ? "取消收藏" : "收藏声音")
 
                     Button {
-                        saveBookmark(track)
+                        toggleBookmark(track)
                     } label: {
-                        Image(systemName: "bookmark")
+                        Image(systemName: isBookmarked ? "bookmark.fill" : "bookmark")
                             .font(.body.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(isBookmarked ? palette.accent : .white)
                             .frame(width: 40, height: 40)
-                            .xmLiquidGlassCircle(interactive: true)
+                            .xmLiquidGlassCircle(
+                                tint: isBookmarked ? palette.accent.opacity(0.25) : nil,
+                                interactive: true
+                            )
                     }
                     .buttonStyle(.plain)
                     .disabled(bookmarkSaving || bookmarkService == nil)
-                    .accessibilityLabel("保存书签")
+                    .accessibilityLabel(isBookmarked ? "移除书签" : "保存书签")
+                    .contextMenu {
+                        if isBookmarked {
+                            Button {
+                                saveBookmark(track)
+                            } label: {
+                                Label("更新书签至当前进度", systemImage: "bookmark.circle")
+                            }
+                            Button(role: .destructive) {
+                                removeBookmark(track)
+                            } label: {
+                                Label("移除书签", systemImage: "bookmark.slash")
+                            }
+                        } else {
+                            Button {
+                                saveBookmark(track)
+                            } label: {
+                                Label("保存书签", systemImage: "bookmark")
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1067,6 +1100,14 @@ private struct PlaybackContentView: View {
         }
     }
 
+    private func toggleBookmark(_ track: Track) {
+        if isBookmarked {
+            removeBookmark(track)
+        } else {
+            saveBookmark(track)
+        }
+    }
+
     private func saveBookmark(_ track: Track) {
         guard let bookmarkService, !bookmarkSaving else { return }
         let position = session.positionMs
@@ -1074,10 +1115,26 @@ private struct PlaybackContentView: View {
         Task {
             do {
                 let saved = try await bookmarkService.add(track: track, positionMs: position)
+                dependencies.recordBookmarks(saved)
                 notice = saved.contains { $0.track.id == track.id }
                     ? "已保存书签" : "登录后可保存书签"
             } catch {
                 notice = s4Error(error, fallback: "保存书签失败，请重试").message
+            }
+            bookmarkSaving = false
+        }
+    }
+
+    private func removeBookmark(_ track: Track) {
+        guard let bookmarkService, !bookmarkSaving else { return }
+        bookmarkSaving = true
+        Task {
+            do {
+                let saved = try await bookmarkService.remove(trackId: track.id)
+                dependencies.recordBookmarks(saved)
+                notice = "已移除书签"
+            } catch {
+                notice = s4Error(error, fallback: "移除书签失败，请重试").message
             }
             bookmarkSaving = false
         }

@@ -128,6 +128,37 @@ final class CatalogueTests: XCTestCase {
         XCTAssertNil(coverUrl([:]), "cover_missing")
     }
 
+    func testCoverUrlParsesCamelCaseAndFallbackKeysWithoutBreakingPriority() {
+        XCTAssertEqual(
+            coverUrl([
+                "coverLarge": "https://image.xmcdn.com/large.jpg",
+                "coverOrigin": "https://image.xmcdn.com/origin.jpg"
+            ]),
+            "https://image.xmcdn.com/large.jpg",
+            "cover_original_priority_kept"
+        )
+        XCTAssertEqual(
+            coverUrl(["coverOrigin": "http://image.xmcdn.com/origin.jpg"]),
+            "https://image.xmcdn.com/origin.jpg",
+            "cover_origin_upgraded"
+        )
+        XCTAssertEqual(
+            coverUrl(["coverPath": "//image.xmcdn.com/path.jpg"]),
+            "https://image.xmcdn.com/path.jpg",
+            "cover_path_protocol_relative"
+        )
+        XCTAssertEqual(
+            coverUrl(["coverWebLarge": "https://image.xmcdn.com/weblarge.jpg"]),
+            "https://image.xmcdn.com/weblarge.jpg",
+            "cover_web_large"
+        )
+        XCTAssertEqual(
+            coverUrl(["pic": "https://image.xmcdn.com/pic.jpg"]),
+            "https://image.xmcdn.com/pic.jpg",
+            "cover_pic_fallback"
+        )
+    }
+
     func testPublicRawKeepsOnlyPublicScalars() {
         let raw: [String: Any] = [
             "title": "标题",
