@@ -19,6 +19,7 @@ __pycache__/
 
 # Distribution artifacts
 *.ipa
+!releases/*.ipa
 *.dSYM.zip
 *.dSYM/
 *.xcarchive/
