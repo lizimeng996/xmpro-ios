@@ -85,6 +85,108 @@ struct GeetestView: View {
     }
 }
 
+enum GeetestNavigationPolicy {
+    enum Decision: Equatable {
+        case allowInitial
+        case allowSubframe
+        case allowSameDocumentFragment
+        case cancel
+    }
+
+    static func isLocalBlankSubframe(_ url: URL) -> Bool {
+        let lowered = url.absoluteString.lowercased()
+        return lowered == "about:blank" || lowered == "about:srcdoc"
+    }
+
+    static func isSameDocumentFragment(_ url: URL, documentURL: URL) -> Bool {
+        guard var urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              var docComponents = URLComponents(url: documentURL, resolvingAgainstBaseURL: false),
+              urlComponents.fragment != nil else {
+            return false
+        }
+        urlComponents.fragment = nil
+        docComponents.fragment = nil
+        return urlComponents.url == docComponents.url
+    }
+
+    static func decide(
+        url: URL,
+        targetFrameIsMain: Bool?,
+        navigationType: WKNavigationType,
+        documentURL: URL,
+        acceptedInitialNavigation: Bool
+    ) -> Decision {
+        switch targetFrameIsMain {
+        case true:
+            // loadHTMLString 在 WebKit 版本间可能报告 about:blank；
+            // 仅允许第一次主框架的本地装载，其余非同页锚点导航全部拦截。
+            if !acceptedInitialNavigation,
+               navigationType == .other,
+               url == documentURL || url.absoluteString.lowercased() == "about:blank" {
+                return .allowInitial
+            }
+            if isSameDocumentFragment(url, documentURL: documentURL) {
+                return .allowSameDocumentFragment
+            }
+            return .cancel
+        case false:
+            if GeetestChallenge.allowed(url: url) || isLocalBlankSubframe(url) {
+                return .allowSubframe
+            }
+            return .cancel
+        case nil:
+            return .cancel
+        }
+    }
+
+    static func contentRuleListRules() -> [[String: Any]] {
+        // 先阻止所有网络资源，再仅豁免严格域名/端口白名单与本地必要类型。
+        // url-filter 使用受限正则语法，不支持 `|` 分支：每个域名、scheme
+        // 与本地空白子文档各写一条独立规则（见 WebKit bug 207539）。
+        var rules: [[String: Any]] = [
+            [
+                "trigger": ["url-filter": ".*"],
+                "action": ["type": "block"]
+            ]
+        ]
+        for domain in ["geetest\\.com", "geevisit\\.com", "gsensebot\\.com"] {
+            rules.append([
+                "trigger": [
+                    "url-filter":
+                        "^https://([a-z0-9-]+\\.)*\(domain)(:443)?/",
+                    "url-filter-is-case-sensitive": false
+                ],
+                "action": ["type": "ignore-previous-rules"]
+            ])
+        }
+        rules.append([
+            "trigger": [
+                "url-filter": "^data:",
+                "resource-type": ["image", "font"]
+            ],
+            "action": ["type": "ignore-previous-rules"]
+        ])
+        rules.append([
+            "trigger": [
+                "url-filter": "^blob:",
+                "resource-type": ["image"]
+            ],
+            "action": ["type": "ignore-previous-rules"]
+        ])
+        for blankURL in ["^about:blank$", "^about:srcdoc$"] {
+            rules.append([
+                "trigger": [
+                    "url-filter": blankURL,
+                    "url-filter-is-case-sensitive": false,
+                    "resource-type": ["document"]
+                ],
+                "action": ["type": "ignore-previous-rules"]
+            ])
+        }
+        return rules
+    }
+}
+
 private struct CaptchaWebView: UIViewRepresentable {
     let captchaID: String
     let nonce: String
@@ -159,36 +261,9 @@ private struct CaptchaWebView: UIViewRepresentable {
         }
 
         func prepare(_ webView: WKWebView, captchaID: String) {
-            // 先阻止所有网络资源，再仅豁免严格域名/端口白名单。
-            // data/blob 仅用于 GeeTest 图像，与 HTML CSP 保持一致。
-            // url-filter 使用受限正则语法，不支持 `|` 分支：每个域名与
-            // 每个 scheme 各写一条独立规则（G-B1；见 WebKit bug 207539）。
-            var rules: [[String: Any]] = [
-                [
-                    "trigger": ["url-filter": ".*"],
-                    "action": ["type": "block"]
-                ]
-            ]
-            for domain in ["geetest\\.com", "geevisit\\.com", "gsensebot\\.com"] {
-                rules.append([
-                    "trigger": [
-                        "url-filter":
-                            "^https://([a-z0-9-]+\\.)*\(domain)(:443)?/",
-                        "url-filter-is-case-sensitive": false
-                    ],
-                    "action": ["type": "ignore-previous-rules"]
-                ])
-            }
-            for scheme in ["data:", "blob:"] {
-                rules.append([
-                    "trigger": [
-                        "url-filter": "^\(scheme)",
-                        "resource-type": ["image"]
-                    ],
-                    "action": ["type": "ignore-previous-rules"]
-                ])
-            }
-            guard let json = try? B1JSON.encode(rules) else {
+            guard let json = try? B1JSON.encode(
+                GeetestNavigationPolicy.contentRuleListRules()
+            ) else {
                 fail()
                 return
             }
@@ -249,32 +324,22 @@ private struct CaptchaWebView: UIViewRepresentable {
                 decisionHandler(.cancel)
                 return
             }
-            // loadHTMLString 在 WebKit 版本间可能报告 about:blank；
-            // 仅允许第一次主框架的本地装载，后续导航全部校验。
-            if !acceptedInitialNavigation,
-               navigationAction.targetFrame?.isMainFrame == true,
-               navigationAction.navigationType == .other,
-               url == documentURL || url.absoluteString == "about:blank" {
+            switch GeetestNavigationPolicy.decide(
+                url: url,
+                targetFrameIsMain: navigationAction.targetFrame?.isMainFrame,
+                navigationType: navigationAction.navigationType,
+                documentURL: documentURL,
+                acceptedInitialNavigation: acceptedInitialNavigation
+            ) {
+            case .allowInitial:
                 acceptedInitialNavigation = true
                 decisionHandler(.allow)
-                return
-            }
-            if navigationAction.targetFrame?.isMainFrame == true,
-               url == documentURL {
-                // 不允许 reload 等路径真的请求远程 appassets 文档。
-                decisionHandler(.cancel)
-                return
-            }
-            if navigationAction.targetFrame?.isMainFrame != true,
-               GeetestChallenge.allowed(url: url) {
-                // GeeTest 挑战 UI 在子框架中加载；只放行白名单内的子框架导航。
+            case .allowSubframe, .allowSameDocumentFragment:
                 decisionHandler(.allow)
-                return
+            case .cancel:
+                // 静默拦截外跳或未授权子框架，避免交互或提交瞬间销毁当前验证页。
+                decisionHandler(.cancel)
             }
-            // 按题设：任何导航到非文档 URL 都进入错误态。
-            // 子资源由 CSP / 内容规则处理，不走此导航豁免。
-            onError("安全验证不允许跳转。")
-            decisionHandler(.cancel)
         }
 
         func webView(
@@ -283,7 +348,7 @@ private struct CaptchaWebView: UIViewRepresentable {
             for navigationAction: WKNavigationAction,
             windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
-            onError("安全验证不允许跳转。")
+            // 阻止新建弹窗，同时保持当前验证会话不中断。
             return nil
         }
 

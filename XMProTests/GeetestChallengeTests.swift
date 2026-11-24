@@ -1,6 +1,7 @@
 
 import XCTest
 import Foundation
+import WebKit
 @testable import XMPro
 
 final class GeetestChallengeTests: XCTestCase {
@@ -153,6 +154,142 @@ final class GeetestChallengeTests: XCTestCase {
         for value in [first, second] {
             XCTAssertTrue(ProtocolBytes.fullMatch(#"^[A-Za-z0-9_-]{43}$"#, value))
             XCTAssertEqual(ProtocolBytes.decodeBase64URL(value)?.count, 32)
+        }
+    }
+
+    func testNavigationPolicyAllowsInitialSubframesAndBlocksExternalSilently() throws {
+        let documentURL = try XCTUnwrap(
+            URL(string: "https://appassets.androidplatform.net/xmpro-captcha/testnonce/index.html")
+        )
+        let aboutBlank = try XCTUnwrap(URL(string: "about:blank"))
+        let aboutSrcdoc = try XCTUnwrap(URL(string: "about:srcdoc"))
+        let fragmentURL = try XCTUnwrap(
+            URL(string: "https://appassets.androidplatform.net/xmpro-captcha/testnonce/index.html#step")
+        )
+        let otherFragmentURL = try XCTUnwrap(
+            URL(string: "https://appassets.androidplatform.net/xmpro-captcha/other/index.html#step")
+        )
+        let geetestSubframe = try XCTUnwrap(URL(string: "https://gcaptcha4.geetest.com/verify"))
+        let geetestMain = try XCTUnwrap(URL(string: "https://www.geetest.com/"))
+        let externalURL = try XCTUnwrap(URL(string: "https://example.invalid/"))
+        let httpGeetest = try XCTUnwrap(URL(string: "http://geetest.com/"))
+        let fileURL = try XCTUnwrap(URL(string: "file:///tmp/a"))
+
+        // 首次主框架装载
+        XCTAssertEqual(
+            GeetestNavigationPolicy.decide(
+                url: documentURL,
+                targetFrameIsMain: true,
+                navigationType: .other,
+                documentURL: documentURL,
+                acceptedInitialNavigation: false
+            ),
+            .allowInitial
+        )
+        XCTAssertEqual(
+            GeetestNavigationPolicy.decide(
+                url: aboutBlank,
+                targetFrameIsMain: true,
+                navigationType: .other,
+                documentURL: documentURL,
+                acceptedInitialNavigation: false
+            ),
+            .allowInitial
+        )
+        XCTAssertEqual(
+            GeetestNavigationPolicy.decide(
+                url: externalURL,
+                targetFrameIsMain: true,
+                navigationType: .other,
+                documentURL: documentURL,
+                acceptedInitialNavigation: false
+            ),
+            .cancel
+        )
+
+        // 首次装载之后的主框架导航：仅允许同页锚点，禁止重载与外跳
+        for blockedMain in [documentURL, aboutBlank, externalURL, geetestMain, otherFragmentURL] {
+            XCTAssertEqual(
+                GeetestNavigationPolicy.decide(
+                    url: blockedMain,
+                    targetFrameIsMain: true,
+                    navigationType: .other,
+                    documentURL: documentURL,
+                    acceptedInitialNavigation: true
+                ),
+                .cancel
+            )
+        }
+        XCTAssertEqual(
+            GeetestNavigationPolicy.decide(
+                url: fragmentURL,
+                targetFrameIsMain: true,
+                navigationType: .linkActivated,
+                documentURL: documentURL,
+                acceptedInitialNavigation: true
+            ),
+            .allowSameDocumentFragment
+        )
+
+        // 子框架：允许白名单 HTTPS 与本地空白子框架，禁止非白名单 URL
+        for allowedSubframe in [geetestSubframe, aboutBlank, aboutSrcdoc] {
+            XCTAssertEqual(
+                GeetestNavigationPolicy.decide(
+                    url: allowedSubframe,
+                    targetFrameIsMain: false,
+                    navigationType: .other,
+                    documentURL: documentURL,
+                    acceptedInitialNavigation: true
+                ),
+                .allowSubframe
+            )
+        }
+        for blockedSubframe in [externalURL, httpGeetest, fileURL] {
+            XCTAssertEqual(
+                GeetestNavigationPolicy.decide(
+                    url: blockedSubframe,
+                    targetFrameIsMain: false,
+                    navigationType: .other,
+                    documentURL: documentURL,
+                    acceptedInitialNavigation: true
+                ),
+                .cancel
+            )
+        }
+
+        // 新窗口（targetFrame == nil）统一静默取消
+        for targetBlankURL in [geetestMain, externalURL, aboutBlank] {
+            XCTAssertEqual(
+                GeetestNavigationPolicy.decide(
+                    url: targetBlankURL,
+                    targetFrameIsMain: nil,
+                    navigationType: .linkActivated,
+                    documentURL: documentURL,
+                    acceptedInitialNavigation: true
+                ),
+                .cancel
+            )
+        }
+    }
+
+    @MainActor
+    func testContentRuleListCompilesCleanly() async throws {
+        let json = try B1JSON.encode(GeetestNavigationPolicy.contentRuleListRules())
+        let identifier = "xmpro-test-captcha-\(UUID().uuidString)"
+        let compiled: (WKContentRuleList?, Error?) = await withCheckedContinuation { continuation in
+            WKContentRuleListStore.default().compileContentRuleList(
+                forIdentifier: identifier,
+                encodedContentRuleList: json
+            ) { list, error in
+                continuation.resume(returning: (list, error))
+            }
+        }
+        XCTAssertNil(compiled.1)
+        XCTAssertNotNil(compiled.0)
+        await withCheckedContinuation { continuation in
+            WKContentRuleListStore.default().removeContentRuleList(forIdentifier: identifier) { _ in
+                continuation.resume()
+            }
         }
     }
 }
