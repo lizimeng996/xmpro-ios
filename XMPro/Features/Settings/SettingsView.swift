@@ -26,18 +26,24 @@ private enum SettingsRoute: Hashable {
     case appearance
     case backup
     case about
+    case following(String)
+    case fans(String)
+    case subscriptions
+    case favorites
 }
 
 /// 「我的」主页面：大标题 + InsetGrouped 原生设置风格 + 个人资料与听时概览
 @MainActor
 struct SettingsView: View {
+    var onOpenPlayer: (() -> Void)? = nil
     @EnvironmentObject private var dependencies: AppDependencies
 
     var body: some View {
         ProfileHomeContentView(
             dependencies: dependencies,
             session: dependencies.playbackSession,
-            themeStore: dependencies.themeStore
+            themeStore: dependencies.themeStore,
+            onOpenPlayer: onOpenPlayer
         )
     }
 }
@@ -47,16 +53,20 @@ private struct ProfileHomeContentView: View {
     @ObservedObject var dependencies: AppDependencies
     @ObservedObject var session: PlaybackSession
     @ObservedObject var themeStore: ThemeStore
+    var onOpenPlayer: (() -> Void)? = nil
     @Environment(\.xmPalette) private var palette
 
     @State private var activeAccount: AccountSummary?
     @State private var profile: UserProfile?
     @State private var favoriteCount: Int = 0
+    @State private var favoriteHasMore = false
     @State private var quota: Quota?
     @State private var busy = false
     @State private var statusBanner: String?
     @State private var loginMode: LoginView.Mode = .sms
     @State private var loginOpen = false
+    @State private var selectedStatRoute: SettingsRoute?
+    @State private var statRouteOpen = false
 
     private var autoClaimOn: Bool {
         !(activeAccount?.paused ?? false)
@@ -124,25 +134,11 @@ private struct ProfileHomeContentView: View {
         .navigationTitle("我的")
         .navigationBarTitleDisplayMode(.large)
         .navigationDestination(for: SettingsRoute.self) { route in
-            switch route {
-            case .accountQuota:
-                AccountAndQuotaSettingsView(
-                    dependencies: dependencies,
-                    themeStore: themeStore
-                )
-            case .playback:
-                PlaybackPreferencesView(
-                    session: dependencies.playbackSession,
-                    themeStore: themeStore
-                )
-            case .channels:
-                ChannelsView()
-            case .appearance:
-                AppearanceSettingsView(themeStore: themeStore)
-            case .backup:
-                BackupSettingsView(dependencies: dependencies)
-            case .about:
-                AboutSettingsView()
+            destinationView(for: route)
+        }
+        .navigationDestination(isPresented: $statRouteOpen) {
+            if let selectedStatRoute {
+                destinationView(for: selectedStatRoute)
             }
         }
         .navigationDestination(isPresented: $loginOpen) {
@@ -196,13 +192,29 @@ private struct ProfileHomeContentView: View {
                     }
 
                     HStack(spacing: 0) {
-                        statColumn(value: profile?.following ?? 0, label: "关注")
+                        statButton(
+                            valueText: "\(profile?.following ?? 0)",
+                            label: "关注",
+                            route: .following(account.uid)
+                        )
                         Divider().frame(height: 22)
-                        statColumn(value: profile?.followers ?? 0, label: "粉丝")
+                        statButton(
+                            valueText: "\(profile?.followers ?? 0)",
+                            label: "粉丝",
+                            route: .fans(account.uid)
+                        )
                         Divider().frame(height: 22)
-                        statColumn(value: profile?.subscriptions ?? 0, label: "订阅")
+                        statButton(
+                            valueText: "\(profile?.subscriptions ?? 0)",
+                            label: "订阅",
+                            route: .subscriptions
+                        )
                         Divider().frame(height: 22)
-                        statColumn(value: favoriteCount, label: "收藏")
+                        statButton(
+                            valueText: favoriteHasMore ? "\(favoriteCount)+" : "\(favoriteCount)",
+                            label: "收藏",
+                            route: .favorites
+                        )
                     }
                     .padding(.vertical, 8)
                     .background(palette.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -320,16 +332,65 @@ private struct ProfileHomeContentView: View {
         }
     }
 
-    private func statColumn(value: Int, label: String) -> some View {
-        VStack(spacing: 2) {
-            Text("\(value)")
-                .font(.headline.monospacedDigit())
-                .foregroundStyle(.primary)
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+    @ViewBuilder
+    private func destinationView(for route: SettingsRoute) -> some View {
+        switch route {
+        case .accountQuota:
+            AccountAndQuotaSettingsView(
+                dependencies: dependencies,
+                themeStore: themeStore
+            )
+        case .playback:
+            PlaybackPreferencesView(
+                session: dependencies.playbackSession,
+                themeStore: themeStore
+            )
+        case .channels:
+            ChannelsView()
+        case .appearance:
+            AppearanceSettingsView(themeStore: themeStore)
+        case .backup:
+            BackupSettingsView(dependencies: dependencies)
+        case .about:
+            AboutSettingsView()
+        case .following(let uid):
+            SocialUserListView(uid: uid, kind: .following, service: dependencies.experienceService)
+        case .fans(let uid):
+            SocialUserListView(uid: uid, kind: .fans, service: dependencies.experienceService)
+        case .subscriptions:
+            ShelfView(
+                initialTab: .subscriptions,
+                navigationTitle: "我的订阅",
+                compactTitle: true,
+                onOpenPlayer: onOpenPlayer
+            )
+        case .favorites:
+            ShelfView(
+                initialTab: .favorites,
+                navigationTitle: "我的收藏",
+                compactTitle: true,
+                onOpenPlayer: onOpenPlayer
+            )
         }
-        .frame(maxWidth: .infinity)
+    }
+
+    private func statButton(valueText: String, label: String, route: SettingsRoute) -> some View {
+        Button {
+            selectedStatRoute = route
+            statRouteOpen = true
+        } label: {
+            VStack(spacing: 2) {
+                Text(valueText)
+                    .font(.headline.monospacedDigit())
+                    .foregroundStyle(.primary)
+                Text(label)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
     }
 
     private var currentQuota: Quota? {
@@ -357,14 +418,16 @@ private struct ProfileHomeContentView: View {
         guard activeAccount != nil else {
             profile = nil
             favoriteCount = 0
+            favoriteHasMore = false
             return
         }
         if fetchRemoteProfile || profile == nil {
             if let loaded = try? await dependencies.experienceService.profile() {
                 profile = loaded
             }
-            if let favs = try? await dependencies.experienceService.favorites(page: 1, pageSize: 1) {
+            if let favs = try? await dependencies.experienceService.favorites(page: 1, pageSize: 30) {
                 favoriteCount = favs.items.count
+                favoriteHasMore = favs.hasMore
             }
         }
     }

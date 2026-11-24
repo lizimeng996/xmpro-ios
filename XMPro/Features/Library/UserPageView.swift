@@ -1,5 +1,109 @@
 import SwiftUI
 
+enum SocialListKind: Hashable {
+    case following
+    case fans
+
+    var title: String {
+        switch self {
+        case .following: return "关注"
+        case .fans: return "粉丝"
+        }
+    }
+
+    var emptyTitle: String {
+        switch self {
+        case .following: return "暂无关注"
+        case .fans: return "暂无粉丝"
+        }
+    }
+}
+
+@MainActor
+struct SocialUserListView: View {
+    let uid: String
+    let kind: SocialListKind
+    let service: XmlyExperienceService
+
+    @State private var users: [SocialUser] = []
+    @State private var loading = true
+    @State private var error: XmlyError?
+
+    var body: some View {
+        LoadStateView(state: loadState) {
+            if users.isEmpty {
+                XMEmptyState(systemImage: "person.2", title: kind.emptyTitle)
+            } else {
+                List {
+                    ForEach(users, id: \.uid) { user in
+                        NavigationLink {
+                            UserPageView(uid: user.uid, service: service)
+                        } label: {
+                            HStack(spacing: 12) {
+                                XMArtwork(url: user.avatarUrl, cornerRadius: 24, symbol: "person.fill")
+                                    .frame(width: 48, height: 48)
+                                    .clipShape(Circle())
+
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(user.nickname.isEmpty ? "听友\(user.uid)" : user.nickname)
+                                        .font(.body.weight(.medium))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                    Text(subtitleText(for: user))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .refreshable {
+                    await load()
+                }
+            }
+        }
+        .xmPageBackground()
+        .navigationTitle(kind.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: "\(uid)-\(kind)") {
+            await load()
+        }
+    }
+
+    private var loadState: LoadState {
+        if loading && users.isEmpty { return .loading }
+        if let error, users.isEmpty {
+            return .error(error, retry: { Task { await load() } })
+        }
+        return .idle
+    }
+
+    private func subtitleText(for user: SocialUser) -> String {
+        let trimmed = user.intro.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        return "\(XMDesign.formatCount(Int64(user.followers))) 粉丝 · \(user.albums) 部作品"
+    }
+
+    private func load() async {
+        loading = true
+        error = nil
+        do {
+            switch kind {
+            case .following:
+                users = try await service.following(uid: uid)
+            case .fans:
+                users = try await service.fans(uid: uid)
+            }
+        } catch {
+            self.error = s4Error(error, fallback: "\(kind.title)列表加载失败，请重试")
+        }
+        loading = false
+    }
+}
+
 @MainActor
 struct UserPageView: View {
     let uid: String
@@ -104,9 +208,19 @@ struct UserPageView: View {
             }
 
             HStack(spacing: 0) {
-                statCell(value: "\(page.following)", label: "关注")
+                NavigationLink {
+                    SocialUserListView(uid: page.uid, kind: .following, service: service)
+                } label: {
+                    statCell(value: "\(page.following)", label: "关注")
+                }
+                .buttonStyle(.plain)
                 Divider().frame(height: 24)
-                statCell(value: XMDesign.formatCount(Int64(page.followers)), label: "粉丝")
+                NavigationLink {
+                    SocialUserListView(uid: page.uid, kind: .fans, service: service)
+                } label: {
+                    statCell(value: XMDesign.formatCount(Int64(page.followers)), label: "粉丝")
+                }
+                .buttonStyle(.plain)
                 Divider().frame(height: 24)
                 statCell(value: "\(page.totalAlbums)", label: "专辑")
             }

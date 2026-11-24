@@ -16,11 +16,25 @@ struct ShelfView: View {
     }
 
     var onOpenPlayer: (() -> Void)? = nil
+    private let pageTitle: String
+    private let compactTitle: Bool
 
     @EnvironmentObject private var dependencies: AppDependencies
     @Environment(\.xmPalette) private var palette
 
-    @State private var tab: Tab = .updates
+    @State private var tab: Tab
+
+    init(
+        initialTab: Tab = .updates,
+        navigationTitle: String = "书架",
+        compactTitle: Bool = false,
+        onOpenPlayer: (() -> Void)? = nil
+    ) {
+        self.onOpenPlayer = onOpenPlayer
+        self.pageTitle = navigationTitle
+        self.compactTitle = compactTitle
+        _tab = State(initialValue: initialTab)
+    }
     @State private var filterText = ""
     @State private var updates: [UpdateItem] = []
     @State private var subscriptions: [SubscriptionItem] = []
@@ -97,8 +111,8 @@ struct ShelfView: View {
         }
         .xmPageBackground()
         .xmToast($notice)
-        .navigationTitle("书架")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationTitle(pageTitle)
+        .navigationBarTitleDisplayMode(compactTitle ? .inline : .large)
         .searchable(text: $filterText, prompt: "筛选更新、订阅、历史与收藏")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

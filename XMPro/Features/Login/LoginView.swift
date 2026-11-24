@@ -11,6 +11,11 @@ struct LoginView: View {
         var id: String { rawValue }
     }
 
+    private struct GeetestSession: Identifiable {
+        let id = UUID()
+        let mobile: String
+    }
+
     @EnvironmentObject private var dependencies: AppDependencies
     @Environment(\.dismiss) private var dismiss
     @Environment(\.xmPalette) private var palette
@@ -21,7 +26,9 @@ struct LoginView: View {
     @State private var mobile = ""
     @State private var smsCode = ""
     @State private var challengeId: String?
-    @State private var showGeetest = false
+    @State private var challengeMobile: String?
+    @State private var geetestSession: GeetestSession?
+    @State private var activeTask: Task<Void, Never>?
     @State private var credentialInput = ""
     @State private var makePrimary = true
     @State private var busy = false
@@ -103,19 +110,40 @@ struct LoginView: View {
         .onChange(of: mode) { _, _ in
             errorMessage = nil
         }
-        .sheet(isPresented: $showGeetest) {
+        .onChange(of: mobile) { _, newValue in
+            if let boundMobile = challengeMobile,
+               Self.normalizeMobile(newValue) != boundMobile {
+                challengeId = nil
+                challengeMobile = nil
+                smsCode = ""
+                errorMessage = nil
+            }
+        }
+        .onDisappear {
+            activeTask?.cancel()
+            activeTask = nil
+        }
+        .sheet(item: $geetestSession) { session in
             NavigationStack {
                 GeetestView(
                     captchaID: ProtocolConfig.captchaID,
-                    onDismiss: { showGeetest = false },
+                    onDismiss: {
+                        if geetestSession?.id == session.id {
+                            geetestSession = nil
+                        }
+                    },
                     onSuccess: { geetest in
-                        showGeetest = false
-                        Task { await sendSms(geetest: geetest) }
+                        geetestSession = nil
+                        activeTask?.cancel()
+                        activeTask = Task {
+                            await sendSms(mobile: session.mobile, geetest: geetest)
+                        }
                     }
                 )
+                .id(session.id)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("取消") { showGeetest = false }
+                        Button("取消") { geetestSession = nil }
                     }
                 }
             }
@@ -142,7 +170,7 @@ struct LoginView: View {
                     return
                 }
                 mobile = normalized
-                showGeetest = true
+                geetestSession = GeetestSession(mobile: normalized)
             } label: {
                 Text(challengeId == nil ? "安全验证并发送验证码" : "重新验证并发送")
                     .frame(maxWidth: .infinity)
@@ -158,7 +186,8 @@ struct LoginView: View {
                     .textContentType(.oneTimeCode)
 
                 Button {
-                    Task { await verifyAndLogin() }
+                    activeTask?.cancel()
+                    activeTask = Task { await verifyAndLogin() }
                 } label: {
                     Text("验证并登录")
                         .frame(maxWidth: .infinity)
@@ -185,7 +214,8 @@ struct LoginView: View {
 
         Section {
             Button {
-                Task { await importCredential() }
+                activeTask?.cancel()
+                activeTask = Task { await importCredential() }
             } label: {
                 Text("解析并导入账号")
                     .frame(maxWidth: .infinity)
@@ -197,22 +227,24 @@ struct LoginView: View {
         }
     }
 
-    private func sendSms(geetest: [String: String]) async {
+    private func sendSms(mobile targetMobile: String, geetest: [String: String]) async {
         busy = true
         errorMessage = nil
         statusMessage = nil
         defer { busy = false }
 
         do {
-            let normalized = Self.normalizeMobile(mobile)
             let device = await dependencies.installDevice.deviceId()
             let id = try await dependencies.loginService.sendSms(
-                mobile: normalized,
+                mobile: targetMobile,
                 geetest: geetest,
                 device: device
             )
             challengeId = id
+            challengeMobile = targetMobile
             statusMessage = "验证码已发送，请查收短信"
+        } catch is CancellationError {
+            return
         } catch let error as XmlyError {
             errorMessage = error.message
         } catch {
@@ -259,6 +291,8 @@ struct LoginView: View {
                 statusMessage = "登录成功"
                 dismiss()
             }
+        } catch is CancellationError {
+            return
         } catch let error as XmlyError {
             errorMessage = error.message
         } catch {
@@ -294,6 +328,8 @@ struct LoginView: View {
                 statusMessage = "账号导入成功"
                 dismiss()
             }
+        } catch is CancellationError {
+            return
         } catch let error as XmlyError {
             errorMessage = error.message
         } catch {

@@ -128,6 +128,8 @@ final class GeetestChallengeTests: XCTestCase {
         XCTAssertEqual(csp["object-src"], ["'none'"])
         XCTAssertEqual(csp["base-uri"], ["'none'"])
         XCTAssertEqual(csp["form-action"], ["'none'"])
+        XCTAssertTrue(html.contains("succeeded=true"))
+        XCTAssertTrue(html.contains("if(!succeeded)emit('close')"))
     }
 
     /// 从生成的 HTML 中提取 CSP，按 `;` 切分指令，返回指令名 → 来源集合。

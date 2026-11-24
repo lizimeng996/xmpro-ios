@@ -224,7 +224,10 @@ private struct CaptchaWebView: UIViewRepresentable {
         return webView
     }
 
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func updateUIView(_ uiView: WKWebView, context: Context) {
+        context.coordinator.onEvent = onEvent
+        context.coordinator.onError = onError
+    }
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
         coordinator.stopped = true
@@ -242,8 +245,8 @@ private struct CaptchaWebView: UIViewRepresentable {
                              WKUIDelegate {
         private let nonce: String
         private let documentURL: URL
-        private let onEvent: (String, String?) -> Void
-        private let onError: (String) -> Void
+        var onEvent: (String, String?) -> Void
+        var onError: (String) -> Void
         var stopped = false
         private var acceptedInitialNavigation = false
 

@@ -85,6 +85,7 @@ enum GeetestChallenge {
         <script>
         (function(){
           var nonce=\(token);
+          var succeeded=false;
           function emit(kind,payload){
             var bridge=window.webkit&&window.webkit.messageHandlers.xmlyCaptcha;
             if(bridge) bridge.postMessage({
@@ -107,12 +108,15 @@ enum GeetestChallenge {
               }).onSuccess(function(){
                 var v=captcha.getValidate();
                 if(!v){fail();return;}
+                succeeded=true;
                 var out={captcha_id:\(id)};
                 ['lot_number','pass_token','gen_time','captcha_output'].forEach(function(k){
                   out[k]=v[k];
                 });
                 emit('success',out);
-              }).onError(fail).onClose(function(){emit('close');});
+              }).onError(fail).onClose(function(){
+                setTimeout(function(){if(!succeeded)emit('close');},300);
+              });
             });
           }
           var script=document.createElement('script');

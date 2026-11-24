@@ -96,7 +96,7 @@ private struct XMProRootView: View {
 
             Tab(XMRootTab.profile.title, systemImage: XMRootTab.profile.systemImage, value: XMRootTab.profile) {
                 NavigationStack {
-                    SettingsView()
+                    SettingsView(onOpenPlayer: openPlayer)
                 }
             }
 
@@ -133,7 +133,7 @@ private struct XMProRootView: View {
                 .tabItem { Label(XMRootTab.search.title, systemImage: XMRootTab.search.systemImage) }
                 .tag(XMRootTab.search)
 
-            NavigationStack { SettingsView() }
+            NavigationStack { SettingsView(onOpenPlayer: openPlayer) }
                 .tabItem { Label(XMRootTab.profile.title, systemImage: XMRootTab.profile.systemImage) }
                 .tag(XMRootTab.profile)
         }
