@@ -589,4 +589,36 @@ final class XmlyLoginServiceTests: XCTestCase {
         let counts = await g.fake.counts()
         XCTAssertEqual(counts.get, 1)
     }
+
+    func testLoginViewMobileAndSmsCodeNormalization() {
+        let mainlandCases = [
+            "138 0013 8000",
+            "138-0013-8000",
+            "+86 138 0013 8000",
+            "（+86）138-0013-8000",
+            "0086 13800138000",
+            "86 138 0013 8000",
+            "＋８６　１３８　００１３　８０００",
+            "\u{202D}+86 138 0013 8000\u{202C}"
+        ]
+        for sample in mainlandCases {
+            let normalized = LoginView.normalizeMobile(sample)
+            XCTAssertEqual(normalized, "13800138000")
+            XCTAssertTrue(LoginView.isValidMobile(normalized))
+        }
+
+        let hkNormalized = LoginView.normalizeMobile("+852 6123 4567")
+        XCTAssertEqual(hkNormalized, "+85261234567")
+        XCTAssertTrue(LoginView.isValidMobile(hkNormalized))
+
+        let shortWith86 = LoginView.normalizeMobile("86123456")
+        XCTAssertEqual(shortWith86, "86123456")
+        XCTAssertTrue(LoginView.isValidMobile(shortWith86))
+
+        for invalid in ["", "   \u{200B} ", "123", "abc"] {
+            XCTAssertFalse(LoginView.isValidMobile(LoginView.normalizeMobile(invalid)))
+        }
+
+        XCTAssertEqual(LoginView.normalizeSmsCode(" １２３ 456\u{200B} "), "123456")
+    }
 }

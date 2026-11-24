@@ -33,6 +33,7 @@ struct ShelfView: View {
     @State private var loading = false
     @State private var error: XmlyError?
     @State private var notice: String?
+    @State private var loginOpen = false
 
     private var keyword: String {
         filterText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -117,6 +118,13 @@ struct ShelfView: View {
         .task(id: "\(tab.rawValue)-\(dependencies.accountRevision)") {
             await load(reset: true)
         }
+        .navigationDestination(isPresented: $loginOpen) {
+            LoginView(initialMode: .sms) { successMessage in
+                loginOpen = false
+                notice = successMessage
+                Task { await load(reset: true) }
+            }
+        }
     }
 
     @ViewBuilder
@@ -136,8 +144,8 @@ struct ShelfView: View {
                     Button("重试") { Task { await load(reset: true) } }
                         .xmGlassButton()
                     if error.code == XmlyError.Code.loginRequired.rawValue {
-                        NavigationLink("去登录") {
-                            LoginView()
+                        Button("去登录") {
+                            loginOpen = true
                         }
                         .xmProminentButton()
                     }

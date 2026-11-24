@@ -15,6 +15,8 @@ struct LoginView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.xmPalette) private var palette
 
+    private let onCompleted: ((String) -> Void)?
+
     @State private var mode: Mode
     @State private var mobile = ""
     @State private var smsCode = ""
@@ -26,8 +28,9 @@ struct LoginView: View {
     @State private var statusMessage: String?
     @State private var errorMessage: String?
 
-    init(initialMode: Mode = .sms) {
+    init(initialMode: Mode = .sms, onCompleted: ((String) -> Void)? = nil) {
         _mode = State(initialValue: initialMode)
+        self.onCompleted = onCompleted
     }
 
     var body: some View {
@@ -122,18 +125,23 @@ struct LoginView: View {
     @ViewBuilder
     private var smsSections: some View {
         Section("手机号短信验证") {
-            TextField("请输入手机号", text: $mobile)
+            TextField("请输入手机号（支持 +86 或空格）", text: $mobile)
                 .keyboardType(.phonePad)
                 .textContentType(.telephoneNumber)
 
             Button {
                 errorMessage = nil
                 statusMessage = nil
-                let trimmed = mobile.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else {
+                let normalized = Self.normalizeMobile(mobile)
+                guard !normalized.isEmpty else {
                     errorMessage = "请先输入手机号"
                     return
                 }
+                guard Self.isValidMobile(normalized) else {
+                    errorMessage = "手机号格式无效，请检查后重试"
+                    return
+                }
+                mobile = normalized
                 showGeetest = true
             } label: {
                 Text(challengeId == nil ? "安全验证并发送验证码" : "重新验证并发送")
@@ -158,7 +166,7 @@ struct LoginView: View {
                 .xmProminentButton()
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
-                .disabled(smsCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(Self.normalizeSmsCode(smsCode).isEmpty)
             }
         }
     }
@@ -196,10 +204,10 @@ struct LoginView: View {
         defer { busy = false }
 
         do {
-            let trimmed = mobile.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalized = Self.normalizeMobile(mobile)
             let device = await dependencies.installDevice.deviceId()
             let id = try await dependencies.loginService.sendSms(
-                mobile: trimmed,
+                mobile: normalized,
                 geetest: geetest,
                 device: device
             )
@@ -224,7 +232,7 @@ struct LoginView: View {
         defer { busy = false }
 
         do {
-            let code = smsCode.trimmingCharacters(in: .whitespacesAndNewlines)
+            let code = Self.normalizeSmsCode(smsCode)
             let result = try await dependencies.loginService.verifySms(
                 challengeId: challengeId,
                 code: code
@@ -245,8 +253,12 @@ struct LoginView: View {
                let client = try? await dependencies.makeCurrentClient() {
                 _ = try? await ledger.refreshQuota(identity: summary.identity, client: client)
             }
-            statusMessage = "登录成功"
-            dismiss()
+            if let onCompleted {
+                onCompleted("登录成功")
+            } else {
+                statusMessage = "登录成功"
+                dismiss()
+            }
         } catch let error as XmlyError {
             errorMessage = error.message
         } catch {
@@ -276,12 +288,61 @@ struct LoginView: View {
             } else {
                 await dependencies.refreshAccountServices()
             }
-            statusMessage = "账号导入成功"
-            dismiss()
+            if let onCompleted {
+                onCompleted("账号导入成功")
+            } else {
+                statusMessage = "账号导入成功"
+                dismiss()
+            }
         } catch let error as XmlyError {
             errorMessage = error.message
         } catch {
             errorMessage = "凭据格式无效，请粘贴完整的 Cookie 或 JSON"
         }
+    }
+
+    nonisolated private static func stripWhitespaceAndConvertFullwidth(_ raw: String) -> String {
+        var result = ""
+        result.reserveCapacity(raw.count)
+        for scalar in raw.unicodeScalars {
+            if scalar.properties.isWhitespace || scalar.properties.generalCategory == .format {
+                continue
+            }
+            if (0xFF01...0xFF5E).contains(scalar.value),
+               let halfwidth = UnicodeScalar(scalar.value - 0xFEE0) {
+                result.unicodeScalars.append(halfwidth)
+            } else {
+                result.unicodeScalars.append(scalar)
+            }
+        }
+        return result
+    }
+
+    nonisolated static func normalizeMobile(_ raw: String) -> String {
+        let stripped = stripWhitespaceAndConvertFullwidth(raw)
+        let separators: Set<UnicodeScalar> = [
+            "-", "\u{2010}", "\u{2011}", "\u{2012}", "\u{2013}", "\u{2014}", "\u{2212}",
+            "(", ")", ".", "·"
+        ]
+        var cleaned = ""
+        cleaned.reserveCapacity(stripped.count)
+        for scalar in stripped.unicodeScalars where !separators.contains(scalar) {
+            cleaned.unicodeScalars.append(scalar)
+        }
+        for prefix in ["+86", "0086", "86"] where cleaned.hasPrefix(prefix) {
+            let rest = String(cleaned.dropFirst(prefix.count))
+            if ProtocolBytes.fullMatch(#"^1[3-9][0-9]{9}$"#, rest) {
+                return rest
+            }
+        }
+        return cleaned
+    }
+
+    nonisolated static func isValidMobile(_ normalized: String) -> Bool {
+        ProtocolBytes.fullMatch(#"^\+?[0-9]{6,18}$"#, normalized)
+    }
+
+    nonisolated static func normalizeSmsCode(_ raw: String) -> String {
+        stripWhitespaceAndConvertFullwidth(raw)
     }
 }

@@ -55,6 +55,8 @@ private struct ProfileHomeContentView: View {
     @State private var quota: Quota?
     @State private var busy = false
     @State private var statusBanner: String?
+    @State private var loginMode: LoginView.Mode = .sms
+    @State private var loginOpen = false
 
     private var autoClaimOn: Bool {
         !(activeAccount?.paused ?? false)
@@ -143,6 +145,14 @@ private struct ProfileHomeContentView: View {
                 AboutSettingsView()
             }
         }
+        .navigationDestination(isPresented: $loginOpen) {
+            LoginView(initialMode: loginMode) { successMessage in
+                loginOpen = false
+                statusBanner = successMessage
+                Task { await loadOverview(fetchRemoteProfile: true) }
+            }
+            .id(loginMode)
+        }
         .task(id: dependencies.accountRevision) {
             await session.prepare()
             await loadOverview(fetchRemoteProfile: false)
@@ -215,8 +225,9 @@ private struct ProfileHomeContentView: View {
                     }
 
                     HStack(spacing: 10) {
-                        NavigationLink {
-                            LoginView(initialMode: .sms)
+                        Button {
+                            loginMode = .sms
+                            loginOpen = true
                         } label: {
                             Text("短信登录")
                                 .font(.subheadline.weight(.semibold))
@@ -224,8 +235,9 @@ private struct ProfileHomeContentView: View {
                         }
                         .xmProminentButton()
 
-                        NavigationLink {
-                            LoginView(initialMode: .credential)
+                        Button {
+                            loginMode = .credential
+                            loginOpen = true
                         } label: {
                             Text("导入 Cookie")
                                 .font(.subheadline.weight(.medium))
@@ -419,6 +431,8 @@ private struct AccountAndQuotaSettingsView: View {
     @State private var deletingAccount: AccountSummary?
     @State private var busy = false
     @State private var message: String?
+    @State private var loginMode: LoginView.Mode = .sms
+    @State private var loginOpen = false
 
     var body: some View {
         List {
@@ -445,16 +459,30 @@ private struct AccountAndQuotaSettingsView: View {
                 }
                 .disabled(activeAccount == nil || busy)
 
-                NavigationLink {
-                    LoginView(initialMode: .credential)
+                Button {
+                    loginMode = .sms
+                    loginOpen = true
                 } label: {
-                    rowLabel(title: "添加 Cookie 账号", subtitle: "粘贴极速版 Cookie 或登录信息 JSON")
+                    HStack {
+                        rowLabel(title: "短信登录新账号", subtitle: "手机号 + 安全验证")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
                 }
 
-                NavigationLink {
-                    LoginView(initialMode: .sms)
+                Button {
+                    loginMode = .credential
+                    loginOpen = true
                 } label: {
-                    rowLabel(title: "短信登录新账号", subtitle: "手机号 + 安全验证")
+                    HStack {
+                        rowLabel(title: "添加 Cookie 账号", subtitle: "粘贴极速版 Cookie 或登录信息 JSON")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
                 }
 
                 if activeAccount != nil {
@@ -539,6 +567,14 @@ private struct AccountAndQuotaSettingsView: View {
         .xmToast($message)
         .navigationTitle("账号与听时")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $loginOpen) {
+            LoginView(initialMode: loginMode) { successMessage in
+                loginOpen = false
+                message = successMessage
+                Task { await reload() }
+            }
+            .id(loginMode)
+        }
         .task(id: dependencies.accountRevision) {
             await reload()
         }
